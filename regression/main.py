@@ -14,9 +14,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # %% Check if GPU is available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device)
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+elif torch.backends.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
 
+print("Using Device: ", device)
 # %% Downloading data
 path = kh.dataset_download("rush4ratio/video-game-sales-with-ratings")
 # %% Importing data
@@ -81,7 +86,7 @@ test_loader = DataLoader(test_dataset, batch_size=2048, shuffle=False, pin_memor
 
 # %% Creating model
 class GlobalSalesModel(nn.Module):
-    def __init__(self, cat_cardinalities, embedding_dims, num_numeric, hidden_units=[256, 128, 64, 64, 32]):
+    def __init__(self, cat_cardinalities, embedding_dims, num_numeric, hidden_units=[128,64, 32]):
 
         super().__init__()
 
@@ -97,7 +102,7 @@ class GlobalSalesModel(nn.Module):
         for units in hidden_units:
             layers.append(nn.Linear(prev_dim, units))
             layers.append(nn.ReLU())
-            layers.append(nn.Dropout(0.15))
+            # layers.append(nn.Dropout(0.15))
             prev_dim = units
 
         layers.append(nn.Linear(prev_dim, 1)) # Output layer
@@ -127,7 +132,7 @@ model = model.to(device)
 # %% Training
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
-epochs = 10000
+epochs = 1000
 
 scaler = torch.GradScaler()
 
@@ -151,9 +156,14 @@ for epoch in range(epochs):
 
         optimizer.zero_grad()
 
-        with torch.autocast("cuda"):
+        if device == torch.device("cuda"):
+            with torch.autocast("cuda"):
+                out = model(cat_data, numeric_data)
+                loss = criterion(out, labels)
+        else:
             out = model(cat_data, numeric_data)
             loss = criterion(out, labels)
+
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
