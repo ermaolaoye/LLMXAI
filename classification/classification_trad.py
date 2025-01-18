@@ -8,45 +8,56 @@ from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, recall_s
 
 
 # %% Load the data
-df = pd.read_csv("../databases/bank-full.csv", delimiter=";")
+df = pd.read_csv("../databases/bank-full.csv", sep=";")
 
 # %% Preprocessing
-df.drop(columns=["default", "contact", "day", "month",
-                 "duration", "pdays", "previous",
-                 "poutcome"], inplace=True, errors='ignore')
+# df.drop(columns=["default", "contact", "day", "month",
+#                  "duration", "pdays", "previous",
+#                  "poutcome"], inplace=True, errors='ignore')
 
-df = df[(df != "unknown").all(axis=1)]
+# df = df[(df != "unknown").all(axis=1)]
+
+# print(df.head())
+
+# %% Handleing outliers
+df = df[(np.abs(df["balance"] - df["balance"].mean()) / df["balance"].std() < 3)]
+df = df[(np.abs(df["age"] - df["age"].mean()) / df["age"].std() < 3)]
+df = df[(np.abs(df["duration"] - df["duration"].mean()) / df["duration"].std() < 3)]
+df = df[(np.abs(df["campaign"] - df["campaign"].mean()) / df["campaign"].std() < 3)]
+
 
 # %% Encode categorical variables
-cat_columns = ["job", "marital", "education", "housing", "loan", "y"]
-label_encoders = {}
+df.select_dtypes(exclude=['number']).columns.values
 
-for col in cat_columns:
-    le = LabelEncoder()
-    df[col] = le.fit_transform(df[col].astype(str))
-    label_encoders[col] = le
+le = LabelEncoder()
 
-# %% Scale numerical features
-numeric_features = ['age', 'balance', 'campaign']
-scaler = StandardScaler()
-df[numeric_features] = scaler.fit_transform(df[numeric_features])
+df['y'] = le.fit_transform(df['y'])
+
+df = pd.get_dummies(df)
 
 # %% Split into features X and target y
-X = df.drop(columns="y", axis=1)
+X = df.drop(columns="y")
 y = df["y"]
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
-# # %% SMOTE for imbalanced data
-# from imblearn.over_sampling import SMOTE
+# %% SMOTE for imbalanced data
+from imblearn.over_sampling import SMOTE
 
-# smote = SMOTE(random_state=42)
+smote = SMOTE(random_state=123)
 
-# print("Before SMOTE:", y_train.value_counts())
-# X_train, y_train = smote.fit_resample(X_train, y_train)
-# print("After SMOTE:", y_train.value_counts())
+X_resampled, y_resampled = smote.fit_resample(X, y)
 
+resampled_data = pd.concat([X_resampled, pd.Series(y_resampled, name = 'y')], axis=1)
+
+X = resampled_data.drop("y", axis=1)
+y = resampled_data["y"]
+
+
+# %% Standardize the data
+scaler = StandardScaler()
+X = scaler.fit_transform(X)
+
+# %% Split into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 # %% Baseline Random Forest
 
 from sklearn.ensemble import RandomForestClassifier

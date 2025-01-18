@@ -12,6 +12,58 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import roc_auc_score, f1_score, recall_score
 
+# %% Load the data
+df = pd.read_csv("../databases/bank-full.csv", sep=";")
+
+%% Preprocessing
+df.drop(columns=["default", "contact", "day", "month",
+                 "duration", "pdays", "previous",
+                 "poutcome"], inplace=True, errors='ignore')
+
+df = df[(df != "unknown").all(axis=1)]
+
+print(df.head())
+
+# %% Handleing outliers
+df = df[(np.abs(df["balance"] - df["balance"].mean()) / df["balance"].std() < 3)]
+df = df[(np.abs(df["age"] - df["age"].mean()) / df["age"].std() < 3)]
+# df = df[(np.abs(df["duration"] - df["duration"].mean()) / df["duration"].std() < 3)]
+df = df[(np.abs(df["campaign"] - df["campaign"].mean()) / df["campaign"].std() < 3)]
+
+
+# %% Encode categorical variables
+df.select_dtypes(exclude=['number']).columns.values
+
+le = LabelEncoder()
+
+df['y'] = le.fit_transform(df['y'])
+
+df = pd.get_dummies(df)
+
+# %% Split into features X and target y
+X = df.drop(columns="y")
+y = df["y"]
+
+# # %% SMOTE for imbalanced data
+# from imblearn.over_sampling import SMOTE
+
+# smote = SMOTE(random_state=32)
+
+# X_resampled, y_resampled = smote.fit_resample(X, y)
+
+# resampled_data = pd.concat([X_resampled, pd.Series(y_resampled, name = 'y')], axis=1)
+
+# X = resampled_data.drop("y", axis=1)
+# y = resampled_data["y"]
+
+
+# %% Standardize the data
+scaler = StandardScaler()
+X = scaler.fit_transform(X)
+
+# %% Split into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
 # %% Decide the Backend
 if torch.backends.mps.is_available():
     device = torch.device("mps")
@@ -22,46 +74,11 @@ else:
 
 print("Using Device:", device)
 
-# %% Load the Data
-df = pd.read_csv("../databases/bank-full.csv", delimiter=";")
-print(df.head())
-print(df.value_counts("poutcome"))
-
-# %% Preprocessing
-# Get rid of the previous marketing campaign data
-df.drop(columns=["default", "contact", "day", "month", "duration", "pdays", "previous", "poutcome"], inplace=True, errors='ignore')
-# Get rid of the unknown values
-df = df[(df != "unknown").all(axis=1)]
-print(df.head())
-print(df.value_counts("y"))
-
-# %% Encoding
-label_encoders = {}
-cat_columns = ["job", "marital", "education", "housing", "loan", "y"]
-for col in cat_columns:
-    le = LabelEncoder()
-    df[col] = le.fit_transform(df[col].astype(str))
-    label_encoders[col] = le
-
-
-# %% Scaling
-numeric_features = ['age', 'balance', 'campaign']
-scaler = StandardScaler()
-df[numeric_features] = scaler.fit_transform(df[numeric_features])
-
-# %% Splitting data
-X = df.drop(columns="y", axis=1)
-y = df["y"]
-
-# For the test set extract 20% of the data, but ensure that the class distribution is the same
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-print(len(X_train), len(X_test))
 # %% Creating PyTorch dataset
 class BankMarketingDataset(Dataset):
     def __init__(self, X, y):
-        self.X = torch.tensor(X.values, dtype=torch.float32)
-        self.y = torch.tensor(y.values, dtype=torch.float32)
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.y = torch.tensor(np.array(y), dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
@@ -77,7 +94,7 @@ test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False, pin_memory
 
 # %% Define the Model
 class BankMarketingModel(nn.Module):
-    def __init__(self, input_dim, hidden_units=[32, 8]):
+    def __init__(self, input_dim, hidden_units=[16, 8, 4]):
         super(BankMarketingModel, self).__init__()
         layers = []
         prev_dim = input_dim
@@ -146,9 +163,11 @@ class FocalLoss(nn.Module):
 
 # %% Training
 model = BankMarketingModel(X_train.shape[1]).to(device)
-# criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight_val).to(device))
-criterion = FocalLoss(alpha=0.1, gamma=2.0)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight_val).to(device))
+# criterion = FocalLoss(alpha=0.1, gamma=2.0)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=10, factor=0.1)
 
 n_epochs = 10000
 
@@ -173,6 +192,7 @@ for epoch in range(n_epochs):
         loss = criterion(y_pred, y_batch.unsqueeze(1))
 
         loss.backward()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
         total_train_loss += loss.item() * len(y_batch)
@@ -198,6 +218,11 @@ for epoch in range(n_epochs):
     test_losses.append(epoch_val_loss)
 
     print(f"Epoch {epoch+1}/{n_epochs} - Train Loss: {epoch_train_loss:.4f} - Test Loss: {epoch_val_loss:.4f}")
+
+    # Update the learning rate
+    scheduler.step(epoch_val_loss)
+
+    print("Learning rate:", optimizer.param_groups[0]['lr'])
 
     # Save the Model every 500 epochs
     if (epoch+1) % 500 == 0:
@@ -247,7 +272,7 @@ with torch.no_grad():
         y_batch = y_batch.to(device)
         logits = model(X_batch)
         probs = torch.sigmoid(logits.squeeze(1))
-        preds = (probs >= 0.33).float()
+        preds = (probs >= 0.7).float()
 
         all_preds.append(preds.cpu().numpy())
         all_targets.append(y_batch.cpu().numpy())
@@ -268,7 +293,7 @@ print("Recall:", recall)
 roc_auc = roc_auc_score(all_targets, all_preds)
 print("ROC AUC:", roc_auc)
 # Confusion matrix
-cm = confusion_matrix(all_targets, all_preds, normalize='true')
+cm = confusion_matrix(all_targets, all_preds)
 plt.figure(figsize=(5, 5))
 sns.heatmap(cm, annot=True, fmt='g', cmap='Blues')
 plt.title("Neural Network")
@@ -279,99 +304,3 @@ plt.text(0.5, -0.15, f"ROC AUC: {roc_auc:.4f}", ha='center', fontsize=12, transf
 
 plt.savefig("nn_confusion_matrix.png")
 plt.show()
-
-# %% All hidden layers
-# from itertools import product
-
-# hidden_units = [32, 64, 128, 256]
-# max_layers = 5
-
-# possible_archs = []
-
-# for num_layers in range(1, max_layers + 1):
-#     # Generate all combinations of `num_layers` hidden units
-#     for arch in product(hidden_units, repeat=num_layers):
-#         possible_archs.append(list(arch))
-# print(possible_archs[75])
-
-# # %% Finding the best hyperparameters using Optuna
-# import optuna
-
-# def objective(trial):
-#     lr = trial.suggest_float("lr", 1e-5, 1e-2, log=True)
-#     dropout = trial.suggest_float("dropout", 0.0, 0.5)
-#     weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-3, log=True)
-#     hidden_unit_idx = trial.suggest_int("hidden_units", 0, len(possible_archs) - 1)
-
-
-#     layers = []
-#     input_dim = X_train.shape[1]
-
-#     prev_dim = input_dim
-#     for units in possible_archs[hidden_unit_idx]:
-#         layers.append(nn.Linear(prev_dim, units))
-#         layers.append(nn.ReLU())
-#         layers.append(nn.Dropout(p=dropout))
-#         prev_dim = units
-#     layers.append(nn.Linear(prev_dim, 1))
-
-#     model = nn.Sequential(*layers).to(device)
-
-#     criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight_val).to(device))
-
-#     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-
-#     batch_size = trial.suggest_int("batch_size", 64, 512, step=64)
-
-#     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
-#     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
-
-#     n_epochs = 100
-
-#     for epoch in range(n_epochs):
-#         model.train()
-#         total_train_loss = 0.0
-
-#         for X_batch, y_batch in train_loader:
-#             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-#             optimizer.zero_grad()
-
-#             logits = model(X_batch)
-#             loss = criterion(logits, y_batch.unsqueeze(1))
-
-#             loss.backward()
-#             optimizer.step()
-
-#         model.eval()
-#         all_preds = []
-#         all_targets = []
-
-#         with torch.no_grad():
-#             for X_batch, y_batch in test_loader:
-#                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-#                 logits = model(X_batch)
-#                 probs = torch.sigmoid(logits.squeeze(1))
-#                 preds = (probs >= 0.5).float().cpu().numpy()
-
-#                 all_preds.append(preds)
-#                 all_targets.append(y_batch.cpu().numpy())
-
-#         # ROC AUC
-#         all_preds = np.concatenate(all_preds)
-
-#         all_targets = np.concatenate(all_targets)
-#         roc_auc = roc_auc_score(all_targets, all_preds)
-
-#         trial.report(roc_auc, epoch)
-
-#         return roc_auc
-
-# study = optuna.create_study(direction="maximize")
-# study.optimize(objective, n_trials=1000)
-
-# print("Number of finished trails:", len(study.trials))
-# best_trail = study.best_trial
-# print("Best trial f1:", best_trail.value)
-# print("Best hyperparameters:", best_trail.params)
