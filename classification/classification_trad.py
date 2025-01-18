@@ -39,17 +39,17 @@ df = pd.get_dummies(df)
 X = df.drop(columns="y")
 y = df["y"]
 
-# %% SMOTE for imbalanced data
-from imblearn.over_sampling import SMOTE
+ # %% SMOTE for imbalanced data
+# from imblearn.over_sampling import SMOTE
 
-smote = SMOTE(random_state=123)
+# smote = SMOTE(random_state=123)
 
-X_resampled, y_resampled = smote.fit_resample(X, y)
+# X_resampled, y_resampled = smote.fit_resample(X, y)
 
-resampled_data = pd.concat([X_resampled, pd.Series(y_resampled, name = 'y')], axis=1)
+# resampled_data = pd.concat([X_resampled, pd.Series(y_resampled, name = 'y')], axis=1)
 
-X = resampled_data.drop("y", axis=1)
-y = resampled_data["y"]
+# X = resampled_data.drop("y", axis=1)
+# y = resampled_data["y"]
 
 
 # %% Standardize the data
@@ -155,7 +155,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 def plot_confusion_matrix(y_true, y_pred, rocauc, title):
-    cm = confusion_matrix(y_true, y_pred, normalize='true')
+    cm = confusion_matrix(y_true, y_pred)
     plt.figure(figsize=(5, 5))
     sns.heatmap(cm, annot=True, fmt="g", cmap="Blues")
     plt.xlabel("Predicted")
