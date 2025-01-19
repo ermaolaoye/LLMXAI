@@ -100,6 +100,8 @@ print("ROC AUC:", roc_auc_score(y_test, y_pred_lr))
 # %% XGBoost
 
 import xgboost as xgb
+from xgboost import plot_tree
+import matplotlib.pyplot as plt
 
 xgb_clf = xgb.XGBClassifier(
     scale_pos_weight=(len(y_train)-sum(y_train)) / sum(y_train),  # analogous to pos_weight
@@ -114,13 +116,23 @@ print("Accuracy:", accuracy_score(y_test, y_pred_xgb))
 print("F1:", f1_score(y_test, y_pred_xgb))
 print("Recall:", recall_score(y_test, y_pred_xgb))
 print("ROC AUC:", roc_auc_score(y_test, y_pred_xgb))
+
+plt.figure(figsize=(20, 10))
+xp = plot_tree(xgb_clf, num_trees=0, rankdir='LR')
+# save
+xp.figure.savefig("xgboost_tree.png")
+print("XGBoost tree saved as xgboost_tree.png")
+
+
+
 # %% LightGBM
 
 import lightgbm as lgb
 
 lgb_clf = lgb.LGBMClassifier(
     scale_pos_weight=(len(y_train)-sum(y_train)) / sum(y_train),
-    random_state=42
+    random_state=42,
+    force_row_wise=True
 )
 
 lgb_clf.fit(X_train, y_train)
@@ -131,6 +143,9 @@ print("Accuracy:", accuracy_score(y_test, y_pred_lgb))
 print("F1:", f1_score(y_test, y_pred_lgb))
 print("Recall:", recall_score(y_test, y_pred_lgb))
 print("ROC AUC:", roc_auc_score(y_test, y_pred_lgb))
+
+ax = lgb.plot_tree(lgb_clf, figsize=(20, 10), show_info=['split_gain'])
+ax.figure.savefig("lightgbm_tree.png")
 
 # %% CatBoost
 
@@ -149,6 +164,7 @@ print("Accuracy:", accuracy_score(y_test, y_pred_cat))
 print("F1:", f1_score(y_test, y_pred_cat))
 print("Recall:", recall_score(y_test, y_pred_cat))
 print("ROC AUC:", roc_auc_score(y_test, y_pred_cat))
+
 
 # %% Confusion Matrix
 import matplotlib.pyplot as plt
@@ -172,3 +188,10 @@ plot_confusion_matrix(y_test, y_pred_lr, roc_auc_score(y_test, y_pred_lr), "Logi
 plot_confusion_matrix(y_test, y_pred_xgb, roc_auc_score(y_test, y_pred_xgb), "XGBoost")
 plot_confusion_matrix(y_test, y_pred_lgb, roc_auc_score(y_test, y_pred_lgb), "LightGBM")
 plot_confusion_matrix(y_test, y_pred_cat, roc_auc_score(y_test, y_pred_cat), "CatBoost")
+
+# %% SHAP
+import shap
+
+explainer = shap.TreeExplainer(lgb_clf)
+shap_values = explainer.shap_values(X_test)
+shap.summary_plot(shap_values, X_test, plot_type="bar")

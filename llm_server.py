@@ -45,6 +45,7 @@ class LLMServer:
 
         url = self.url + "ollama/api/generate"
         response = requests.post(url, json=data, headers=self.headers)
+        print(response.text)
         response = response.json()
         if "response" in response:
             return response["response"]
@@ -78,3 +79,8 @@ class LLMServer:
         if "detail" in response:
             raise Exception(response["detail"])
         raise Exception("Unknown error")
+
+llm = LLMServer(token="sk-763f51916aaa4a548cbb4bf365fb9e81")
+
+response = llm.ask("What is the capital of France?")
+print(response)
