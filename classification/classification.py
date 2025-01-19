@@ -300,7 +300,7 @@ plt.title("Neural Network")
 plt.xlabel("Predicted")
 plt.ylabel("Actual")
 
-plt.text(0.5, -0.15, f"ROC AUC: {roc_auc:.4f}", ha='center', fontsize=12, transform=plt.gca().transAxes)
+plt.text(0.5, -0.15, f"ROC AUC: {roc_auc:.4f}", ha='center', fontsize=12)
 
 plt.savefig("nn_confusion_matrix.png")
 plt.show()

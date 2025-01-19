@@ -162,7 +162,7 @@ def plot_confusion_matrix(y_true, y_pred, rocauc, title):
     plt.ylabel("Actual")
     plt.title(title)
 
-    plt.text(0.5, -0.15, f"ROC AUC: {rocauc:.4f}", ha='center', fontsize=12, transform=plt.gca().transAxes)
+    plt.text(0.5, -0.15, f"ROC AUC: {rocauc:.4f}", ha='center', fontsize=12)
 
     plt.savefig(title + "_confusion_matrix.png")
     plt.show()
