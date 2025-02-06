@@ -9,8 +9,8 @@ class LLMServer:
     PERSONALITY_JSON_ONLY = "You can only output JSON, no explanations."
     PERSONALITY_YAML_ONLY = "You can only output YAML, no explanations."
 
-    MODEL_LLAMA3_70B = "llama3.3:latest" # 70B llama3.3 model
-    MODEL_LLAMA3_3B = "llama3.2:latest" # 3B llama3.2 model
+    MODEL_DEEPSEEK_R1_70B = "deepseek-r1:70b" # 70B llama3.3 model
+    MODEL_DEEPSEEK_R1_32B = "deepseek-r1:32b" # 3B llama3.2 model
 
     def __init__(self, token=None):
         self.url = "https://ai.create.kcl.ac.uk/"
@@ -18,15 +18,14 @@ class LLMServer:
         self.headers = {
             "Authorization": f"Bearer {self.token}"
         }
-        self.set_system(LLMServer.PERSONALITY_DEFAULT)
-        self.set_model(LLMServer.MODEL_LLAMA3_70B) # Default model
+        self.set_model(LLMServer.MODEL_DEEPSEEK_R1_70B) # Default model
 
     def set_system(self, personality):
         self.personality = personality
         self.chat_history = [{"role": "system", "content": f"System personality set to {personality}"}]
 
     def set_model(self, model):
-        if model != LLMServer.MODEL_LLAMA3_70B and model != LLMServer.MODEL_LLAMA3_3B:
+        if model != LLMServer.MODEL_DEEPSEEK_R1_70B and model != LLMServer.MODEL_DEEPSEEK_R1_32B:
             raise ValueError("Model not supported")
 
         self.model = model
@@ -79,8 +78,3 @@ class LLMServer:
         if "detail" in response:
             raise Exception(response["detail"])
         raise Exception("Unknown error")
-
-llm = LLMServer(token="sk-763f51916aaa4a548cbb4bf365fb9e81")
-
-response = llm.ask("What is the capital of France?")
-print(response)

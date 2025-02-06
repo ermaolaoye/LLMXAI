@@ -40,6 +40,9 @@ df['y'] = le.fit_transform(df['y'])
 
 df = pd.get_dummies(df)
 
+# %% Export to CSV
+df.to_csv("bank_marketing_preprocessed.csv", index=False)
+
 # %% Split into features X and target y
 X = df.drop(columns="y")
 y = df["y"]
