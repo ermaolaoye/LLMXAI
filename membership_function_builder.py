@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import skfuzzy as fuzz
+from skfuzzy import membership
 
 # %% Load the JSON file
 with open("membership_functions_config.json", "r") as file:
@@ -69,11 +70,8 @@ for attribute, details in membership_functions_config.items():
         for i in range(num_clusters):
             center = centers[i]
             sigma = sigmas[i]
-            # Define a Gaussian membership function
-            # The Gaussian function is defined as: exp(-0.5 * ((x - center) / sigma) ** 2)
-            # Capture 'center' and 'sigma' in the lambda's default parameters
-            func = lambda x, c=center, s=sigma: np.exp(-((x - c) ** 2) / (2 * s ** 2))
-            membership_funcs.append(func)
+            membership_funcs.append(lambda x, c=center, s=sigma: fuzz.gaussmf(x, c, s))
+
 
     elif cluster_info[0]["shape"] == "triangular":
         # Computer (a, b, c) for each cluster
@@ -96,20 +94,7 @@ for attribute, details in membership_functions_config.items():
         membership_funcs = []
 
         for a, b, c in zip(a_vals, b_vals, c_vals):
-            def tri_mu(x, a=a, b=b, c=c):
-                # Piecewise function for triangular membership function
-                x = np.asarray(x)
-                mu = np.zeros_like(x, dtype=float)
-                # Rising edge
-                idx = np.logical_and(x > a, x <= b)
-                if b != a:
-                    mu[idx] = (x[idx] - a) / (b - a)
-                # Falling edge
-                idx = np.logical_and(x > b, x < c)
-                if c != b:
-                    mu[idx] = (c - x[idx]) / (c - b)
-                return mu
-            membership_funcs.append(tri_mu)
+            membership_funcs.append(lambda x, a=a, b=b, c=c: fuzz.trimf(x, [a, b, c]))
 
     elif cluster_info[0]["shape"] == "trapezoidal":
         # Compute (a, b, c, d) for each cluster
@@ -137,23 +122,8 @@ for attribute, details in membership_functions_config.items():
         # Define a list of membership functions for each cluster
         membership_funcs = []
         for a, b, c, d in zip(a_vals, b_vals, c_vals, d_vals):
-            def trap_mu(x, a=a, b=b, c=c, d=d):
-                # Piecewise function for trapezoidal membership function
-                x = np.asarray(x)
-                mu = np.zeros_like(x, dtype=float)
-                # Rising edge
-                idx = np.logical_and(x > a, x <= b)
-                if b != a:
-                    mu[idx] = (x[idx] - a) / (b - a)
-                # Plateau
-                idx = np.logical_and(x > b, x < c)
-                mu[idx] = 1
-                # Falling edge
-                idx = np.logical_and(x >= c, x < d)
-                if d != c:
-                    mu[idx] = (d - x[idx]) / (d - c)
-                return mu
-            membership_funcs.append(trap_mu)
+            membership_funcs.append(lambda x, a=a, b=b, c=c, d=d: fuzz.trapmf(x, [a, b, c, d]))
+
 
     elif cluster_info[0]["shape"] == "crisp":
         # Define crisp membership functions for binary columns
@@ -168,11 +138,15 @@ for attribute, details in membership_functions_config.items():
     plt.xlabel(attribute)
     plt.ylabel("Membership Degree")
     plt.ylim(0, 1)
+
+    x_vals = np.linspace(np.min(attribute_data), np.max(attribute_data), 200)
     for i, func in enumerate(membership_funcs):
         # don't plot the membership function for binary columns
         if cluster_info[0]["shape"] != "crisp":
-            plt.plot(attribute_data, func(attribute_data), label=f"Cluster {i+1}")
+            # The name of the cluster is given by the 'name' field in the configuration json
+            y_vals = func(x_vals)
+            plt.plot(x_vals, y_vals, label=f"Cluster {i+1} ({cluster_info[i]['name']})")
         else:
-            plt.axvline(centers[i], color='r', linestyle='--', label=f"Cluster {i+1}")
+            plt.plot([centers[i], centers[i]], [0, 1], label=f"Cluster {i+1} ({cluster_info[i]['name']})")
     plt.legend()
     plt.show()
